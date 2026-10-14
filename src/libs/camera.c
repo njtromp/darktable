@@ -41,6 +41,8 @@ typedef struct dt_lib_camera_property_t
   GtkWidget *values;
   // Show property OSD
   GtkDarktableToggleButton *osd;
+  // Property is a GP_WIDGET_TOGGLE, values holds "off" and "on"
+  gboolean is_toggle;
 } dt_lib_camera_property_t;
 
 typedef struct dt_lib_camera_t
@@ -103,8 +105,12 @@ int position(const dt_lib_module_t *self)
 static void property_changed_callback(GtkComboBox *cb, gpointer data)
 {
   dt_lib_camera_property_t *prop = (dt_lib_camera_property_t *)data;
-  dt_camctl_camera_set_property_string(darktable.camctl, NULL, prop->property_name,
-                                       dt_bauhaus_combobox_get_text(prop->values));
+  if(prop->is_toggle)
+    dt_camctl_camera_set_property_int(darktable.camctl, NULL, prop->property_name,
+                                      dt_bauhaus_combobox_get(prop->values));
+  else
+    dt_camctl_camera_set_property_string(darktable.camctl, NULL, prop->property_name,
+                                         dt_bauhaus_combobox_get_text(prop->values));
 }
 
 // Add a new property of camera to the GUI
@@ -114,8 +120,12 @@ static dt_lib_camera_property_t *_lib_property_add_new(dt_lib_camera_t *lib,
 {
   if(dt_camctl_camera_property_exists(darktable.camctl, NULL, propertyname))
   {
+    CameraWidgetType type;
+    const gboolean is_toggle = !dt_camctl_camera_get_property_type(darktable.camctl, NULL, propertyname, &type)
+                               && type == GP_WIDGET_TOGGLE;
     const char *value;
-    if((value = dt_camctl_camera_property_get_first_choice(darktable.camctl, NULL, propertyname)) != NULL)
+    if(is_toggle
+       || (value = dt_camctl_camera_property_get_first_choice(darktable.camctl, NULL, propertyname)) != NULL)
     {
       // We got a value for property, let's construct the GUI for the property and add values
       int i = 0;
@@ -131,15 +141,26 @@ static dt_lib_camera_property_t *_lib_property_add_new(dt_lib_camera_t *lib,
       dt_gui_add_class(GTK_WIDGET(prop->osd), "dt_transparent_background");
       g_object_ref_sink(prop->osd);
       gtk_widget_set_tooltip_text(GTK_WIDGET(prop->osd), _("toggle view property in center view"));
+      prop->is_toggle = is_toggle;
 
-      do
+      if(is_toggle)
       {
-        dt_bauhaus_combobox_add(prop->values, g_dgettext("libgphoto2-6", value));
-        if(current_value && !strcmp(current_value, g_dgettext("libgphoto2-6", value)))
-          dt_bauhaus_combobox_set(prop->values, i);
-        i++;
-      } while((value = dt_camctl_camera_property_get_next_choice(darktable.camctl, NULL, propertyname))
-              != NULL);
+        dt_bauhaus_combobox_add(prop->values, _("off"));
+        dt_bauhaus_combobox_add(prop->values, _("on"));
+        if(current_value)
+          dt_bauhaus_combobox_set(prop->values, atoi(current_value) ? 1 : 0);
+      }
+      else
+      {
+        do
+        {
+          dt_bauhaus_combobox_add(prop->values, g_dgettext("libgphoto2-6", value));
+          if(current_value && !strcmp(current_value, g_dgettext("libgphoto2-6", value)))
+            dt_bauhaus_combobox_set(prop->values, i);
+          i++;
+        } while((value = dt_camctl_camera_property_get_next_choice(darktable.camctl, NULL, propertyname))
+                != NULL);
+      }
 
       lib->gui.properties = g_list_append(lib->gui.properties, prop);
 
@@ -179,7 +200,10 @@ static void _camera_property_value_changed(const dt_camera_t *camera,
   if((citem = g_list_find_custom(lib->gui.properties, name, _compare_property_by_name)) != NULL)
   {
     dt_lib_camera_property_t *prop = citem->data;
-    dt_bauhaus_combobox_set_from_text(prop->values, value);
+    if(prop->is_toggle)
+      dt_bauhaus_combobox_set(prop->values, atoi(value) ? 1 : 0);
+    else
+      dt_bauhaus_combobox_set_from_text(prop->values, value);
   }
 }
 

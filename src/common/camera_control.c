@@ -1710,7 +1710,8 @@ static void _camera_build_property_menu(CameraWidget *widget,
         gp_widget_get_type(child, &type);
         if(type == GP_WIDGET_MENU
            || type == GP_WIDGET_TEXT
-           || type == GP_WIDGET_RADIO)
+           || type == GP_WIDGET_RADIO
+           || type == GP_WIDGET_TOGGLE)
         {
           /* construct menu item for property */
           gp_widget_get_name(child, &sk);
@@ -1900,9 +1901,18 @@ const char *dt_camctl_camera_get_property(const dt_camctl_t *c,
   dt_pthread_mutex_lock(&camera->config_lock);
   const char *value = NULL;
   CameraWidget *widget;
+  CameraWidgetType type;
   if(gp_widget_get_child_by_name(camera->configuration, property_name, &widget) == GP_OK)
   {
-    gp_widget_get_value(widget, &value);
+    // toggle values are stored as int, report them as "0" or "1"
+    if(gp_widget_get_type(widget, &type) == GP_OK && type == GP_WIDGET_TOGGLE)
+    {
+      int toggle = 0;
+      if(gp_widget_get_value(widget, &toggle) == GP_OK)
+        value = toggle ? "1" : "0";
+    }
+    else
+      gp_widget_get_value(widget, &value);
   }
   dt_pthread_mutex_unlock(&camera->config_lock);
   return value;
@@ -2237,9 +2247,11 @@ static void _camera_configuration_notify_change(const dt_camctl_t *c,
     if(new_config_type == GP_WIDGET_MENU
        || new_config_type == GP_WIDGET_TEXT
        || new_config_type == GP_WIDGET_RADIO
+       || new_config_type == GP_WIDGET_TOGGLE
        || old_config_type == GP_WIDGET_MENU
        || old_config_type == GP_WIDGET_TEXT
-       || old_config_type == GP_WIDGET_RADIO)
+       || old_config_type == GP_WIDGET_RADIO
+       || old_config_type == GP_WIDGET_TOGGLE)
     {
       char *new_config_value = NULL;
       char *old_config_value = NULL;
@@ -2260,6 +2272,13 @@ static void _camera_configuration_notify_change(const dt_camctl_t *c,
         new_config_value = (char *)g_malloc(G_ASCII_DTOSTR_BUF_SIZE);
         g_ascii_dtostr(new_config_value, G_ASCII_DTOSTR_BUF_SIZE, value);
       }
+      else if(new_config_type == GP_WIDGET_TOGGLE)
+      {
+        int value;
+        if(gp_widget_get_value(new_config, &value) != GP_OK)
+          goto end;
+        new_config_value = value ? "1" : "0";
+      }
       else
         if(gp_widget_get_value(new_config, &new_config_value) != GP_OK)
           goto end;
@@ -2271,6 +2290,13 @@ static void _camera_configuration_notify_change(const dt_camctl_t *c,
           goto end;
         old_config_value = (char *)g_malloc(G_ASCII_DTOSTR_BUF_SIZE);
         g_ascii_dtostr(old_config_value, G_ASCII_DTOSTR_BUF_SIZE, value);
+      }
+      else if(old_config_type == GP_WIDGET_TOGGLE)
+      {
+        int value;
+        if(gp_widget_get_value(old_config_child, &value) != GP_OK)
+          goto end;
+        old_config_value = value ? "1" : "0";
       }
       else
         if(gp_widget_get_value(old_config_child, &old_config_value) != GP_OK)
