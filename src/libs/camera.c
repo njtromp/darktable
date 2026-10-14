@@ -60,8 +60,6 @@ typedef struct dt_lib_camera_t
     GtkWidget *plabel, *pname; // propertylabel, widget
     GList *properties;         // a list of dt_lib_camera_property_t
 
-    GtkMenu *properties_menu;  // available properties
-
   } gui;
 
   // Data part of the module
@@ -252,8 +250,13 @@ static void _property_choice_callback(GtkMenuItem *item, gpointer user_data)
 static void _show_property_popupmenu_clicked(GtkWidget *widget, gpointer user_data)
 {
   dt_lib_camera_t *lib = (dt_lib_camera_t *)user_data;
+  GtkMenu *menu = NULL;
 
-  dt_gui_menu_popup(lib->gui.properties_menu, widget, GDK_GRAVITY_SOUTH_EAST, GDK_GRAVITY_NORTH_EAST);
+  // build a new menu each time, dt_gui_menu_popup() releases it when it is closed
+  dt_camctl_camera_build_property_menu(darktable.camctl, NULL, &menu,
+                                       G_CALLBACK(_property_choice_callback), lib);
+  if(menu)
+    dt_gui_menu_popup(menu, widget, GDK_GRAVITY_SOUTH_EAST, GDK_GRAVITY_NORTH_EAST);
 }
 
 static void _lib_property_add_to_gui(dt_lib_camera_property_t *prop, dt_lib_camera_t *lib)
@@ -611,10 +614,6 @@ void view_enter(struct dt_lib_module_t *self,
     g_slist_free_full(options, dt_conf_string_entry_free);
   }
 
-  // Build the property menu (we do it now because it needs an actual camera)
-  dt_camctl_camera_build_property_menu(darktable.camctl, NULL, &lib->gui.properties_menu,
-                                       G_CALLBACK(_property_choice_callback), lib);
-
   // Register listener
   dt_camctl_register_listener(darktable.camctl, lib->data.listener);
   dt_camctl_tether_mode(darktable.camctl, NULL, TRUE);
@@ -632,8 +631,6 @@ void view_leave(struct dt_lib_module_t *self,
   // Remove listener from camera control
   dt_camctl_tether_mode(darktable.camctl, NULL, FALSE);
   dt_camctl_unregister_listener(darktable.camctl, lib->data.listener);
-  gtk_widget_destroy(GTK_WIDGET(lib->gui.properties_menu));
-  lib->gui.properties_menu = NULL;
 
   // Remove all properties
   while(lib->gui.prop_end > lib->gui.prop_start +1) {
